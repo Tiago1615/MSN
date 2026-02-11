@@ -18,7 +18,6 @@ def punto_en_triangulo(p, p1, p2, p3):
 
 def encontrar_triangulo(p, nodos, triangulos):
     for i, tri in enumerate(triangulos):
-        # pasar de índices 1-based a 0-based
         idx = tri - 1
         p1, p2, p3 = nodos[idx]
 
@@ -77,7 +76,7 @@ else:
     z_real = f(p[0], p[1])
     nodo_tri_encontrado = []
     for i, nodo in zip(idx, nodos_tri):
-        nodo_tri_encontrado.append((i + 1))
+        nodo_tri_encontrado.append(int(i + 1))
 
     print(f"Triángulo encontrado: {tri_id + 1}")
     print(f"Nodos del triángulo: {nodo_tri_encontrado}")
