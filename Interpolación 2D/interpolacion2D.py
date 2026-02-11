@@ -37,7 +37,10 @@ def funciones_forma(p1, p2, p3):
     for i in range(3):
         b = np.zeros(3)
         b[i] = 1
-        coef = np.linalg.solve(A, b)
+        try:
+            coef = np.linalg.solve(A, b)
+        except np.linalg.LinAlgError:
+            return None
         N.append(coef)
 
     return N
@@ -56,6 +59,9 @@ def interpolar(p, nodos_triangulo):
     ])
 
     N = funciones_forma(p1, p2, p3)
+    if N is None:
+        print("No se pudieron calcular las funciones de forma para el triángulo dado.")
+        exit(1)
 
     x, y = p
     valor = 0.0
