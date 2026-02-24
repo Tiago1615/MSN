@@ -1,117 +1,110 @@
 import numpy as np
 
-# Parámetros del problema
-L = 1.0
-Nnodes = 5
+# ---------------------
+# Parámetros
+# ---------------------
+L = 10.0
+Nelements = 100
+Nnodes = Nelements + 1  # 101 nodos físicos
+
 c = 1.0
 u0 = 0.0
-uL_prime = 0.0
+uL_prime = 1.0
 
 def f(x):
-    return 1.0
+    return 2.0 * x
 
 # ---------------------
-# Malla
+# Malla física
 # ---------------------
 x = np.linspace(0, L, Nnodes)
-Nelements = Nnodes - 1
 
-# Conectividad
-elem = np.zeros((Nelements,2), dtype=int)
-for n in range(Nelements):
-    elem[n,0] = n
-    elem[n,1] = n+1
+A = np.zeros((Nelements, Nelements))
+B = np.zeros(Nelements)
 
 # ---------------------
-# Inicializar sistema global
+# Cuadratura Gauss [-1,1]
 # ---------------------
-A = np.zeros((Nnodes, Nnodes))
-B = np.zeros(Nnodes)
-
-# ---------------------
-# Cuadratura gaussiana 2 puntos
-# ---------------------
-xi = np.array([(1-1/np.sqrt(3))/2,
-               (1+1/np.sqrt(3))/2])
-w = np.array([0.5, 0.5])
+xi = np.array([-1/np.sqrt(3), 1/np.sqrt(3)])
+w = np.array([1.0, 1.0])
 
 # ---------------------
 # Bucle en elementos
 # ---------------------
-for n in range(Nelements):
-    
-    nodes = elem[n]
-    x1 = x[nodes[0]]
-    x2 = x[nodes[1]]
+for n in range(Nelements-1):
+
+    x1 = x[n]
+    x2 = x[n+1]
     h = x2 - x1
-    
-    # Inicializar matrices elementales
+
     Ae = np.zeros((2,2))
     Be = np.zeros(2)
-    
-    # Bucle en puntos de integración
+
     for k in range(2):
-        
+
         xi_k = xi[k]
         w_k = w[k]
-        
-        # Funciones de forma en referencia
-        Nhat = np.array([1-xi_k, xi_k])
-        
-        # Derivadas en referencia
-        dNhat = np.array([-1.0, 1.0])
-        
-        # Transformación al elemento físico
-        x_phys = x1 + h*xi_k
-        
-        # Derivadas físicas
-        dNdx = dNhat / h
-        
-        # Construcción matriz elemental
+
+        Nhat = np.array([(1 - xi_k)/2,
+                         (1 + xi_k)/2])
+        dNhat = np.array([-0.5, 0.5])
+
+        x_phys = (x1 + x2)/2 + (h/2)*xi_k
+        J = h/2
+        dNdx = dNhat * (2/h)
+
         for alpha in range(2):
             for beta in range(2):
-                
-                # término rigidez
+
                 Ae[alpha,beta] += w_k * (
-                    (1/h)*dNhat[alpha]*dNhat[beta]
+                    dNdx[alpha]*dNdx[beta]*J
                 )
-                
-                # término masa
+
                 Ae[alpha,beta] += w_k * (
-                    c*h*Nhat[alpha]*Nhat[beta]
+                    c*Nhat[alpha]*Nhat[beta]*J
                 )
-            
-            # Vector elemental
+
             Be[alpha] += w_k * (
-                h * f(x_phys) * Nhat[alpha]
+                f(x_phys)*Nhat[alpha]*J
             )
-    
+
     # -----------------
-    # Ensamblaje
+    # Ensamblaje (solo nodos 0..99)
     # -----------------
+    global_nodes = [n, n+1]
+
     for alpha in range(2):
-        I = nodes[alpha]
+        I = global_nodes[alpha]
+
+        if I >= Ndof:
+            continue  # no ensamblamos nodo 100
+
         B[I] += Be[alpha]
-        
+
         for beta in range(2):
-            J = nodes[beta]
-            A[I,J] += Ae[alpha,beta]
+            Jg = global_nodes[beta]
+
+            if Jg < Ndof:
+                A[I,Jg] += Ae[alpha,beta]
 
 # ---------------------
-# Condición Neumann
+# Neumann
 # ---------------------
 B[-1] += uL_prime
 
 # ---------------------
-# Dirichlet en nodo 0
+# Dirichlet
 # ---------------------
-A[0,:] = 0
-A[0,0] = 1
+A[0, :] = 0.0
+A[:, 0] = 0.0
+A[0, 0] = 1.0
 B[0] = u0
 
 # ---------------------
-# Resolver sistema
+# Resolver
 # ---------------------
 U = np.linalg.solve(A,B)
 
+np.set_printoptions(precision=6, suppress=True)
+print("Shape de U:", U.shape)
 print(U)
