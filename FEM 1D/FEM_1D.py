@@ -5,7 +5,7 @@ import numpy as np
 # ---------------------
 L = 10.0
 Nelements = 100
-Nnodes = Nelements + 1  # 101 nodos físicos
+Nnodes = Nelements + 1
 
 c = 1.0
 u0 = 0.0
@@ -15,7 +15,7 @@ def f(x):
     return 2.0 * x
 
 # ---------------------
-# Malla física
+# Malla
 # ---------------------
 x = np.linspace(0, L, Nnodes)
 
@@ -69,22 +69,19 @@ for n in range(Nelements-1):
             )
 
     # -----------------
-    # Ensamblaje (solo nodos 0..99)
+    # Ensamblaje
     # -----------------
     global_nodes = [n, n+1]
 
     for alpha in range(2):
         I = global_nodes[alpha]
 
-        if I >= Ndof:
-            continue  # no ensamblamos nodo 100
-
         B[I] += Be[alpha]
 
         for beta in range(2):
             Jg = global_nodes[beta]
 
-            if Jg < Ndof:
+            if Jg < Nelements:
                 A[I,Jg] += Ae[alpha,beta]
 
 # ---------------------
@@ -106,5 +103,4 @@ B[0] = u0
 U = np.linalg.solve(A,B)
 
 np.set_printoptions(precision=6, suppress=True)
-print("Shape de U:", U.shape)
 print(U)
