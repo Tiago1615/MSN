@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 # 1) LECTURA DE MALLA
 # ============================================================
 
-mesh = ms.read("C:/Users/santu/Desktop/Documentos ULPGC/Master/Asignaturas/Segundo Semestre/MSN/MSN/FEM 2D/cuadrado.msh")
+mesh = ms.read("C:/Users/santu/Desktop/DocumentosULPGC/Master/Segundo semestre/MSN/FEM 2D/cuadrado.msh")
 
 nodes = mesh.points[:, :2]
 elements = mesh.cells_dict["triangle"]
@@ -28,10 +28,10 @@ print("Triángulos:", Nelements)
 c = 1.0
 
 def f(x, y):
-    return 0.0
+    return 1.0
 
 def g(x, y):
-    return 1.0   # valor Neumann si se usa
+    return 1.0
 
 # ============================================================
 # 3) MATRIZ GLOBAL
@@ -217,7 +217,14 @@ for node, (value, _) in dirichlet_nodes.items():
 
 U = np.linalg.solve(A, B)
 
-print("Sistema resuelto correctamente.")
+print(f"Matriz A:\n{A}")
+print(f"Tamaño de A: {A.shape}\n")
+
+print(f"Vector B: \n{B}")
+print(f"Tamaño de B: {B.shape}\n")
+
+print(f"Solución U: \n{U}")
+print(f"Tamaño de U: {U.shape}")
 
 # ============================================================
 # 11) VISUALIZACIÓN
