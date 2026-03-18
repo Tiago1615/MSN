@@ -1,2 +1,5 @@
 # Ignorar carmpeta gmesh
 gmesh/
+
+# Ignorar archivos PDF
+*.pdf
