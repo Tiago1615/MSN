@@ -111,6 +111,9 @@ for n in range(Nt):
 
 U_array = np.array(U_history)
 
+print(f"Tamaño de U_array: {U_array.shape}")
+print(f"U_array:\n{U_array}")
+
 # =====================
 # GRÁFICAS
 # =====================

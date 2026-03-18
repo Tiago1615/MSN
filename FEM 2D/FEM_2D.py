@@ -5,7 +5,7 @@ import matplotlib.tri as tri
 from mpl_toolkits.mplot3d import Axes3D
 
 # ============================================================
-# 1) LECTURA DE MALLA
+# LECTURA DE MALLA
 # ============================================================
 
 mesh = ms.read("C:/Users/santu/Desktop/DocumentosULPGC/Master/Segundo semestre/MSN/FEM 2D/cuadrado.msh")
@@ -22,7 +22,7 @@ print("Nodos:", Nnodes)
 print("Triángulos:", Nelements)
 
 # ============================================================
-# 2) PROBLEMA
+# PROBLEMA
 # ============================================================
 
 c = 1.0
@@ -34,14 +34,14 @@ def g(x, y):
     return 1.0
 
 # ============================================================
-# 3) MATRIZ GLOBAL
+# MATRIZ GLOBAL
 # ============================================================
 
 A = np.zeros((Nnodes, Nnodes))
 B = np.zeros(Nnodes)
 
 # ============================================================
-# 4) CUADRATURA TRIANGULAR (3 puntos)
+# CUADRATURA TRIANGULAR (3 puntos)
 # ============================================================
 
 gauss_pts = np.array([
@@ -53,7 +53,7 @@ gauss_pts = np.array([
 weights = np.array([1/6, 1/6, 1/6])
 
 # ============================================================
-# 5) ENSAMBLAJE
+# ENSAMBLAJE
 # ============================================================
 
 for elem in elements:
@@ -116,7 +116,7 @@ for elem in elements:
         B[elem[a]] += Be[a]
 
 # ============================================================
-# 6) CONFIGURACIÓN DE CONDICIONES
+# CONFIGURACIÓN DE CONDICIONES
 # ============================================================
 
 # Valores Dirichlet por grupo físico
@@ -132,7 +132,7 @@ if len(neumann_groups) > 1:
     raise ValueError("Solo se permite una condición Neumann.")
 
 # ============================================================
-# 7) DETECTAR NODOS DIRICHLET CON PRIORIDAD
+# DETECTAR NODOS DIRICHLET CON PRIORIDAD
 # ============================================================
 
 priority_groups = [6, 5]
@@ -159,7 +159,7 @@ for edge, phys in zip(lines, line_phys):
 dirichlet_nodes_set = set(dirichlet_nodes.keys())
 
 # ============================================================
-# 8) APLICAR NEUMANN (Dirichlet tiene prioridad)
+# APLICAR NEUMANN (Dirichlet tiene prioridad)
 # ============================================================
 
 if len(neumann_groups) == 1:
@@ -201,7 +201,7 @@ if len(neumann_groups) == 1:
                     B[n2] += w * g(x_phys,y_phys) * N[1] * length
 
 # ============================================================
-# 9) APLICAR DIRICHLET
+# APLICAR DIRICHLET
 # ============================================================
 
 for node, (value, _) in dirichlet_nodes.items():
@@ -212,7 +212,7 @@ for node, (value, _) in dirichlet_nodes.items():
     B[node] = value
 
 # ============================================================
-# 10) RESOLVER
+# RESOLVER
 # ============================================================
 
 U = np.linalg.solve(A, B)
@@ -227,7 +227,7 @@ print(f"Solución U: \n{U}")
 print(f"Tamaño de U: {U.shape}")
 
 # ============================================================
-# 11) VISUALIZACIÓN
+# VISUALIZACIÓN
 # ============================================================
 
 triang = tri.Triangulation(nodes[:,0], nodes[:,1], elements)
