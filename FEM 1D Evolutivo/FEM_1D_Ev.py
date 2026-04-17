@@ -15,7 +15,7 @@ Tfinal = 1.0
 Nt = int(Tfinal/dt)
 
 def f(x):
-    return 2.0 * x
+    return np.cos(2*np.pi*x)
 
 # ---------------------
 # Malla
@@ -77,11 +77,6 @@ for n in range(Nelements):
             M[I,Jg] += Me[i,j]
 
 # ---------------------
-# Condición inicial
-# ---------------------
-U = np.zeros(Nnodes)
-
-# ---------------------
 # Dirichlet
 # ---------------------
 def apply_dirichlet(A, b):
@@ -91,7 +86,33 @@ def apply_dirichlet(A, b):
 
     # x=L
     A[-1,:] = 0; A[:,-1] = 0
-    A[-1,-1] = 1; b[-1] = 0
+    A[-1,-1] = 1; b[-1] = 1
+
+# ---------------------
+# Condición inicial
+# ---------------------
+U = np.zeros(Nnodes)
+U[-1] = 1.0 # Aplicamos Dirichlet desde el inicio
+
+U_history = [U.copy()] # Guardamos el estado inicial t=0
+
+# Pre-calculamos A si no cambia en el tiempo para ganar velocidad
+A_base = M + dt * K 
+
+for n in range(Nt):
+    # b depende de la U del paso anterior
+    b = M @ U + dt * F 
+    
+    # Creamos una copia de A para no destruir la original con Dirichlet
+    A_step = A_base.copy()
+    
+    apply_dirichlet(A_step, b)
+
+    U = np.linalg.solve(A_step, b)
+    U_history.append(U.copy())
+
+# Nota: Ahora U_array tendrá tamaño (Nt + 1, Nnodes)
+U_array = np.array(U_history)
 
 # ---------------------
 # Bucle temporal
@@ -111,8 +132,8 @@ for n in range(Nt):
 
 U_array = np.array(U_history)
 
+print(f"Valor del vector solución en t={Tfinal:.2f}: {U}")
 print(f"Tamaño de U_array: {U_array.shape}")
-print(f"U_array:\n{U_array}")
 
 # =====================
 # GRÁFICAS
@@ -133,7 +154,10 @@ plt.ylabel("u(x,t)")
 plt.title("Evolución temporal (curvas)")
 plt.legend()
 plt.grid()
-plt.show()
+
+# Guardar figura
+plt.savefig("curvas.png")
+plt.close()
 
 # ---------------------
 # Mapa de calor
@@ -149,7 +173,10 @@ plt.colorbar(label="u(x,t)")
 plt.xlabel("x")
 plt.ylabel("t")
 plt.title("Mapa de calor")
-plt.show()
+
+# Guardar figura
+plt.savefig("heatmap.png")
+plt.close()
 
 # ---------------------
 # Animación
@@ -167,4 +194,7 @@ def update(frame):
 
 ani = FuncAnimation(fig, update, frames=Nt, interval=50)
 
-plt.show()
+# Guardar animación (GIF)
+ani.save("animacion.gif", writer="pillow", fps=30)
+
+print("Animación guardada como animacion.gif")
