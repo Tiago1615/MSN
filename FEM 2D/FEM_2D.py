@@ -2,70 +2,135 @@ import numpy as np
 import meshio as ms
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
-from mpl_toolkits.mplot3d import Axes3D
+
+
+# ============================================================
+# CONFIGURACIÓN DEL PROBLEMA
+# ============================================================
+
+mesh_file = "C:/Users/santu/Desktop/Documentos ULPGC/Master/Asignaturas/Segundo Semestre/MSN/MSN/FEM 2D/pararayos.msh"
+
+c = 1.0
+
+
+def f(x, y):
+    return 1.0
+
+
+def g(x, y):
+    return 1.0
+
+
+# Grupos físicos con condición de Dirichlet.
+# Puede ser un número constante o una función lambda x, y.
+dirichlet_conditions = {
+    5: 0.0,
+    6: 1.0
+}
+
+# Grupos físicos con condición de Neumann.
+neumann_conditions = {}
+
+# Prioridad en esquinas o nodos compartidos.
+priority_groups = [6, 5]
+
 
 # ============================================================
 # LECTURA DE MALLA
 # ============================================================
 
-mesh = ms.read("C:/Users/santu/Desktop/Documentos ULPGC/Master/Asignaturas/Segundo Semestre/MSN/MSN/FEM 2D/pararayos.msh")
+def leer_malla(archivo):
+    mesh = ms.read(archivo)
 
-nodes = mesh.points[:, :2]
-elements = mesh.cells_dict["triangle"]
-lines = mesh.cells_dict["line"]
-line_phys = mesh.cell_data_dict["gmsh:physical"]["line"]
+    nodes = mesh.points[:, :2]
+    elements = mesh.cells_dict["triangle"]
+    lines = mesh.cells_dict["line"]
+    line_phys = mesh.cell_data_dict["gmsh:physical"]["line"]
 
-Nnodes = len(nodes)
-Nelements = len(elements)
+    return nodes, elements, lines, line_phys
 
-print("Nodos:", Nnodes)
-print("Triángulos:", Nelements)
 
 # ============================================================
-# PROBLEMA
+# CUADRATURA
 # ============================================================
 
-c = 1.0
+def cuadratura_triangulo_3p():
+    puntos = np.array([
+        [1.0 / 6.0, 1.0 / 6.0],
+        [2.0 / 3.0, 1.0 / 6.0],
+        [1.0 / 6.0, 2.0 / 3.0]
+    ])
 
-def f(x, y):
-    return 1.0
+    pesos = np.array([
+        1.0 / 6.0,
+        1.0 / 6.0,
+        1.0 / 6.0
+    ])
 
-def g(x, y):
-    return 1.0
+    return puntos, pesos
+
+
+def cuadratura_linea_2p():
+    puntos = np.array([
+        0.5 - 1.0 / (2.0 * np.sqrt(3.0)),
+        0.5 + 1.0 / (2.0 * np.sqrt(3.0))
+    ])
+
+    pesos = np.array([
+        0.5,
+        0.5
+    ])
+
+    return puntos, pesos
+
 
 # ============================================================
-# MATRIZ GLOBAL
+# FUNCIONES DE FORMA
 # ============================================================
 
-A = np.zeros((Nnodes, Nnodes))
-B = np.zeros(Nnodes)
+def funciones_forma_triangulo(xi, eta):
+    return np.array([
+        1.0 - xi - eta,
+        xi,
+        eta
+    ])
+
+
+def gradientes_referencia():
+    return np.array([
+        [-1.0, -1.0],
+        [ 1.0,  0.0],
+        [ 0.0,  1.0]
+    ])
+
+
+def funciones_forma_linea(xi):
+    return np.array([
+        1.0 - xi,
+        xi
+    ])
+
 
 # ============================================================
-# CUADRATURA TRIANGULAR (3 puntos)
+# UTILIDADES
 # ============================================================
 
-gauss_pts = np.array([
-    [1/6, 1/6],
-    [2/3, 1/6],
-    [1/6, 2/3]
-])
+def evaluar_valor(valor, x, y):
+    """
+    Permite usar condiciones constantes o funciones.
 
-weights = np.array([1/6, 1/6, 1/6])
+    Ejemplos:
+        5: 0.0
+        6: lambda x, y: x + y
+    """
 
-# ============================================================
-# ENSAMBLAJE
-# ============================================================
+    if callable(valor):
+        return valor(x, y)
 
-grad_ref = np.array([
-    [-1, -1],
-    [ 1,  0],
-    [ 0,  1]
-])
+    return float(valor)
 
-for elem in elements:
 
-    coords = nodes[elem]
-
+def matriz_jacobiana(coords):
     x1, y1 = coords[0]
     x2, y2 = coords[1]
     x3, y3 = coords[2]
@@ -74,6 +139,32 @@ for elem in elements:
         [x2 - x1, x3 - x1],
         [y2 - y1, y3 - y1]
     ])
+
+    return J
+
+
+def mapear_a_fisico(coords, xi, eta):
+    x1, y1 = coords[0]
+
+    J = matriz_jacobiana(coords)
+
+    x = x1 + J[0, 0] * xi + J[0, 1] * eta
+    y = y1 + J[1, 0] * xi + J[1, 1] * eta
+
+    return x, y
+
+
+# ============================================================
+# MATRICES LOCALES
+# ============================================================
+
+def calcular_elemento_triangular(coords, c, f):
+    """
+    Calcula la matriz local Ae y el vector local Be
+    para un triángulo P1.
+    """
+
+    J = matriz_jacobiana(coords)
 
     detJ = np.linalg.det(J)
 
@@ -84,87 +175,133 @@ for elem in elements:
 
     invJ = np.linalg.inv(J)
 
-    # Transformación correcta de gradientes:
-    # grad_phys = grad_ref @ invJ
+    grad_ref = gradientes_referencia()
+
+    # Gradientes físicos.
+    # Los gradientes están escritos como filas.
     grad_phys = grad_ref @ invJ
 
     Ae = np.zeros((3, 3))
     Be = np.zeros(3)
 
-    for k in range(3):
+    puntos, pesos = cuadratura_triangulo_3p()
 
-        xi, eta = gauss_pts[k]
-        w = weights[k]
+    for (xi, eta), w in zip(puntos, pesos):
 
-        N = np.array([
-            1 - xi - eta,
-            xi,
-            eta
-        ])
+        N = funciones_forma_triangulo(xi, eta)
 
-        x_phys = x1 + J[0, 0] * xi + J[0, 1] * eta
-        y_phys = y1 + J[1, 0] * xi + J[1, 1] * eta
+        x_phys, y_phys = mapear_a_fisico(coords, xi, eta)
 
         for a in range(3):
 
             for b in range(3):
 
-                # Término de rigidez: ∫ grad(Na) · grad(Nb) dΩ
-                Ae[a, b] += w * np.dot(
-                    grad_phys[a],
-                    grad_phys[b]
-                ) * area_factor
+                # Término de rigidez:
+                # ∫ grad(Na) · grad(Nb) dΩ
+                Ae[a, b] += (
+                    w
+                    * np.dot(grad_phys[a], grad_phys[b])
+                    * area_factor
+                )
 
-                # Término de masa/reacción: ∫ c Na Nb dΩ
-                Ae[a, b] += w * c * N[a] * N[b] * area_factor
+                # Término de reacción:
+                # ∫ c Na Nb dΩ
+                Ae[a, b] += (
+                    w
+                    * c
+                    * N[a]
+                    * N[b]
+                    * area_factor
+                )
 
-            # Segundo miembro: ∫ f Na dΩ
-            Be[a] += w * f(x_phys, y_phys) * N[a] * area_factor
+            # Segundo miembro:
+            # ∫ f Na dΩ
+            Be[a] += (
+                w
+                * f(x_phys, y_phys)
+                * N[a]
+                * area_factor
+            )
 
-    # Ensamblaje global
-    for a in range(3):
-        A_global = elem[a]
-        B[A_global] += Be[a]
+    return Ae, Be
 
-        for b in range(3):
-            B_global = elem[b]
-            A[A_global, B_global] += Ae[a, b]
-
-# ============================================================
-# CONFIGURACIÓN DE CONDICIONES
-# ============================================================
-
-# Valores Dirichlet por grupo físico
-dirichlet_values = {
-    5: 0.0,
-    6: 1.0
-}
-
-# Solo permitir 0 o 1 grupo Neumann
-neumann_groups = []   # ejemplo: [7]
-
-if len(neumann_groups) > 1:
-    raise ValueError("Solo se permite una condición Neumann.")
 
 # ============================================================
-# DETECTAR NODOS DIRICHLET CON PRIORIDAD
+# ENSAMBLAJE GLOBAL
 # ============================================================
 
-priority_groups = [6, 5]
-priority_map = {group: i for i, group in enumerate(priority_groups)}
+def ensamblar_sistema(nodes, elements, c, f):
+    Nnodes = len(nodes)
 
-dirichlet_nodes = {}
+    A = np.zeros((Nnodes, Nnodes))
+    B = np.zeros(Nnodes)
 
-for edge, phys in zip(lines, line_phys):
+    for elem in elements:
 
-    if phys in dirichlet_values:
+        coords = nodes[elem]
 
-        value = dirichlet_values[phys]
+        Ae, Be = calcular_elemento_triangular(coords, c, f)
 
-        # Más robusto que priority_map[phys]
-        priority = priority_map.get(phys, len(priority_groups))
+        for a in range(3):
+
+            I = elem[a]
+            B[I] += Be[a]
+
+            for b in range(3):
+
+                Jg = elem[b]
+                A[I, Jg] += Ae[a, b]
+
+    return A, B
+
+
+# ============================================================
+# CONDICIONES DE DIRICHLET
+# ============================================================
+
+def detectar_nodos_dirichlet(
+    nodes,
+    lines,
+    line_phys,
+    dirichlet_conditions,
+    priority_groups
+):
+    """
+    Devuelve un diccionario:
+
+        nodo -> valor_dirichlet
+
+    Si un nodo pertenece a varios grupos Dirichlet,
+    se usa la prioridad indicada en priority_groups.
+    """
+
+    priority_map = {
+        group: i for i, group in enumerate(priority_groups)
+    }
+
+    dirichlet_nodes = {}
+
+    for edge, phys in zip(lines, line_phys):
+
+        if phys not in dirichlet_conditions:
+            continue
+
+        condicion = dirichlet_conditions[phys]
+
+        priority = priority_map.get(
+            phys,
+            len(priority_groups)
+        )
 
         for node in edge:
+
+            x_node, y_node = nodes[node]
+
+            value = evaluar_valor(
+                condicion,
+                x_node,
+                y_node
+            )
 
             if node in dirichlet_nodes:
 
@@ -176,83 +313,227 @@ for edge, phys in zip(lines, line_phys):
             else:
                 dirichlet_nodes[node] = (value, priority)
 
-dirichlet_nodes_set = set(dirichlet_nodes.keys())
+    # Nos quedamos solo con nodo -> valor
+    resultado = {
+        node: value_priority[0]
+        for node, value_priority in dirichlet_nodes.items()
+    }
+
+    return resultado
+
+
+def aplicar_dirichlet(A, B, dirichlet_nodes):
+    """
+    Aplica Dirichlet de forma simétrica.
+
+    Importante:
+    primero se corrige B y luego se anulan filas y columnas.
+    """
+
+    # Corregir segundo miembro
+    for node, value in dirichlet_nodes.items():
+        B -= A[:, node] * value
+
+    # Imponer Dirichlet
+    for node, value in dirichlet_nodes.items():
+
+        A[node, :] = 0.0
+        A[:, node] = 0.0
+
+        A[node, node] = 1.0
+        B[node] = value
+
+    return A, B
+
 
 # ============================================================
-# APLICAR NEUMANN
-# Dirichlet tiene prioridad
+# CONDICIONES DE NEUMANN
 # ============================================================
 
-if len(neumann_groups) == 1:
+def aplicar_neumann(
+    B,
+    nodes,
+    lines,
+    line_phys,
+    neumann_conditions,
+    dirichlet_nodes
+):
+    """
+    Aplica condiciones de Neumann sobre grupos físicos.
 
-    neumann_group = neumann_groups[0]
+    Si un nodo ya tiene Dirichlet, se omite la contribución
+    en ese nodo para que Dirichlet tenga prioridad.
+    """
 
-    gauss_1D = np.array([
-        0.5 - 1 / (2 * np.sqrt(3)),
-        0.5 + 1 / (2 * np.sqrt(3))
-    ])
+    dirichlet_set = set(dirichlet_nodes.keys())
 
-    weights_1D = np.array([0.5, 0.5])
+    puntos, pesos = cuadratura_linea_2p()
 
     for edge, phys in zip(lines, line_phys):
 
-        if phys == neumann_group:
+        if phys not in neumann_conditions:
+            continue
 
-            n1, n2 = edge
+        condicion = neumann_conditions[phys]
 
-            # Si los dos nodos son Dirichlet, no se añade nada
-            if n1 in dirichlet_nodes_set and n2 in dirichlet_nodes_set:
-                continue
+        n1, n2 = edge
 
-            x1, y1 = nodes[n1]
-            x2, y2 = nodes[n2]
+        x1, y1 = nodes[n1]
+        x2, y2 = nodes[n2]
 
-            length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+        length = np.sqrt(
+            (x2 - x1)**2
+            + (y2 - y1)**2
+        )
 
-            for xi, w in zip(gauss_1D, weights_1D):
+        for xi, w in zip(puntos, pesos):
 
-                x_phys = x1 + xi * (x2 - x1)
-                y_phys = y1 + xi * (y2 - y1)
+            x_phys = x1 + xi * (x2 - x1)
+            y_phys = y1 + xi * (y2 - y1)
 
-                N = np.array([
-                    1 - xi,
-                    xi
-                ])
+            N = funciones_forma_linea(xi)
 
-                if n1 not in dirichlet_nodes_set:
-                    B[n1] += w * g(x_phys, y_phys) * N[0] * length
+            g_value = evaluar_valor(
+                condicion,
+                x_phys,
+                y_phys
+            )
 
-                if n2 not in dirichlet_nodes_set:
-                    B[n2] += w * g(x_phys, y_phys) * N[1] * length
+            if n1 not in dirichlet_set:
+                B[n1] += w * g_value * N[0] * length
 
-# ============================================================
-# APLICAR DIRICHLET CORRECTAMENTE
-# ============================================================
+            if n2 not in dirichlet_set:
+                B[n2] += w * g_value * N[1] * length
 
-fixed_nodes = list(dirichlet_nodes.keys())
-fixed_values = np.array([dirichlet_nodes[node][0] for node in fixed_nodes])
+    return B
 
-# Corregir el segundo miembro antes de anular columnas
-# Esto es necesario para condiciones Dirichlet no homogéneas, por ejemplo u = 1
-for node, value in zip(fixed_nodes, fixed_values):
-    B -= A[:, node] * value
-
-# Imponer condiciones Dirichlet
-for node, value in zip(fixed_nodes, fixed_values):
-
-    A[node, :] = 0.0
-    A[:, node] = 0.0
-    A[node, node] = 1.0
-
-    B[node] = value
 
 # ============================================================
-# RESOLVER
+# RESOLUCIÓN FEM 2D
 # ============================================================
 
-U = np.linalg.solve(A, B)
+def resolver_fem_2d(
+    mesh_file,
+    c,
+    f,
+    dirichlet_conditions,
+    neumann_conditions,
+    priority_groups
+):
+    nodes, elements, lines, line_phys = leer_malla(mesh_file)
 
-print(f"Matriz A:\n{A}")
+    print("Nodos:", len(nodes))
+    print("Triángulos:", len(elements))
+
+    A, B = ensamblar_sistema(
+        nodes,
+        elements,
+        c,
+        f
+    )
+
+    dirichlet_nodes = detectar_nodos_dirichlet(
+        nodes,
+        lines,
+        line_phys,
+        dirichlet_conditions,
+        priority_groups
+    )
+
+    B = aplicar_neumann(
+        B,
+        nodes,
+        lines,
+        line_phys,
+        neumann_conditions,
+        dirichlet_nodes
+    )
+
+    A, B = aplicar_dirichlet(
+        A,
+        B,
+        dirichlet_nodes
+    )
+
+    U = np.linalg.solve(A, B)
+
+    return nodes, elements, A, B, U
+
+
+# ============================================================
+# VISUALIZACIÓN
+# ============================================================
+
+def visualizar_resultado(nodes, elements, U):
+    triang = tri.Triangulation(
+        nodes[:, 0],
+        nodes[:, 1],
+        elements
+    )
+
+    # Malla
+    plt.figure()
+    plt.triplot(
+        triang,
+        color="black",
+        linewidth=0.5
+    )
+    plt.gca().set_aspect("equal")
+    plt.title("Malla FEM")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.show()
+
+    # Solución 2D
+    plt.figure()
+    plt.tricontourf(
+        triang,
+        U,
+        50
+    )
+    plt.colorbar(label="u(x,y)")
+    plt.gca().set_aspect("equal")
+    plt.title("Solución FEM")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.show()
+
+    # Solución 3D
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    ax.plot_trisurf(
+        nodes[:, 0],
+        nodes[:, 1],
+        U,
+        triangles=elements,
+        cmap="viridis"
+    )
+
+    ax.set_title("Superficie FEM")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("u")
+
+    plt.show()
+
+
+# ============================================================
+# EJECUCIÓN
+# ============================================================
+
+nodes, elements, A, B, U = resolver_fem_2d(
+    mesh_file=mesh_file,
+    c=c,
+    f=f,
+    dirichlet_conditions=dirichlet_conditions,
+    neumann_conditions=neumann_conditions,
+    priority_groups=priority_groups
+)
+
+np.set_printoptions(precision=10, suppress=True)
+
+print(f"\nMatriz A:\n{A}")
 print(f"Tamaño de A: {A.shape}\n")
 
 print(f"Vector B:\n{B}")
@@ -261,43 +542,4 @@ print(f"Tamaño de B: {B.shape}\n")
 print(f"Solución U:\n{U}")
 print(f"Tamaño de U: {U.shape}")
 
-# ============================================================
-# VISUALIZACIÓN
-# ============================================================
-
-triang = tri.Triangulation(nodes[:, 0], nodes[:, 1], elements)
-
-# Malla
-plt.figure()
-plt.triplot(triang, color="black", linewidth=0.5)
-plt.gca().set_aspect("equal")
-plt.title("Malla FEM")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
-
-# Solución 2D
-plt.figure()
-plt.tricontourf(triang, U, 50)
-plt.colorbar(label="u(x,y)")
-plt.gca().set_aspect("equal")
-plt.title("Solución FEM")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
-
-# Solución 3D
-fig = plt.figure()
-ax = fig.add_subplot(111, projection="3d")
-ax.plot_trisurf(
-    nodes[:, 0],
-    nodes[:, 1],
-    U,
-    triangles=elements,
-    cmap="viridis"
-)
-ax.set_title("Superficie FEM")
-ax.set_xlabel("x")
-ax.set_ylabel("y")
-ax.set_zlabel("u")
-plt.show()
+visualizar_resultado(nodes, elements, U)
