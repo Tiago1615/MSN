@@ -33,29 +33,32 @@ def crear_malla(L, Nelements):
 
 
 # ============================================================
-# CUADRATURA Y FUNCIONES DE FORMA
+# CUADRATURA Y FUNCIONES DE FORMA EN [0, 1]
 # ============================================================
 
 def gauss_2p():
     xi = np.array([
-        -1.0 / np.sqrt(3.0),
-         1.0 / np.sqrt(3.0)
+        (1.0 - 1.0 / np.sqrt(3.0)) / 2.0,
+        (1.0 + 1.0 / np.sqrt(3.0)) / 2.0
     ])
 
-    w = np.array([1.0, 1.0])
+    w = np.array([
+        0.5,
+        0.5
+    ])
 
     return xi, w
 
 
 def funciones_forma_lineales(xi):
     N = np.array([
-        (1.0 - xi) / 2.0,
-        (1.0 + xi) / 2.0
+        1.0 - xi,
+        xi
     ])
 
     dN_dxi = np.array([
-        -0.5,
-         0.5
+        -1.0,
+         1.0
     ])
 
     return N, dN_dxi
@@ -67,33 +70,44 @@ def funciones_forma_lineales(xi):
 
 def calcular_matriz_local(x1, x2, c, f):
     h = x2 - x1
-    J = h / 2.0
+    J = h
+    
+    Ke = (1.0 / h) * np.array([
+        [ 1.0, -1.0],
+        [-1.0,  1.0]
+    ])
 
-    Ae = np.zeros((2, 2))
+    Me = np.zeros((2, 2))
+
     Be = np.zeros(2)
 
     xi_gauss, pesos = gauss_2p()
 
     for xi, w in zip(xi_gauss, pesos):
+        N, _ = funciones_forma_lineales(xi)
 
-        N, dN_dxi = funciones_forma_lineales(xi)
-
-        x_phys = (x1 + x2) / 2.0 + J * xi
-
-        dN_dx = dN_dxi / J
+        # Transformación al elemento físico:
+        x_phys = x1 + h * xi
 
         for a in range(2):
 
             for b in range(2):
 
-                # Término de rigidez
-                Ae[a, b] += w * dN_dx[a] * dN_dx[b] * J
+                Me[a, b] += (
+                    w
+                    * N[a]
+                    * N[b]
+                    * J
+                )
 
-                # Término de reacción
-                Ae[a, b] += w * c * N[a] * N[b] * J
+            Be[a] += (
+                w
+                * f(x_phys)
+                * N[a]
+                * J
+            )
 
-            # Vector de cargas
-            Be[a] += w * f(x_phys) * N[a] * J
+    Ae = Ke + c * Me
 
     return Ae, Be
 
@@ -165,11 +179,9 @@ def aplicar_dirichlet(A, B, dirichlet_conditions, Nnodes):
         nodo = obtener_nodo_lado(lado, Nnodes)
         nodos_dirichlet[nodo] = valor
 
-    # Corrección del segundo miembro
     for nodo, valor in nodos_dirichlet.items():
         B -= A[:, nodo] * valor
 
-    # Imposición de Dirichlet
     for nodo, valor in nodos_dirichlet.items():
 
         A[nodo, :] = 0.0
@@ -185,18 +197,32 @@ def aplicar_dirichlet(A, B, dirichlet_conditions, Nnodes):
 # RESOLUCIÓN
 # ============================================================
 
-def resolver_fem_1d(L, Nelements, c, f, dirichlet_conditions, neumann_conditions):
+def resolver_fem_1d(
+    L,
+    Nelements,
+    c,
+    f,
+    dirichlet_conditions,
+    neumann_conditions
+):
     x, Nnodes = crear_malla(L, Nelements)
 
     A, B = ensamblar_sistema(x, Nelements, c, f)
 
-    B = aplicar_neumann(B, neumann_conditions, Nnodes)
+    B = aplicar_neumann(
+        B,
+        neumann_conditions,
+        Nnodes
+    )
 
-    A, B = aplicar_dirichlet(A, B, dirichlet_conditions, Nnodes)
+    A, B = aplicar_dirichlet(
+        A,
+        B,
+        dirichlet_conditions,
+        Nnodes
+    )
 
     U = np.linalg.solve(A, B)
-
-    U = U + 0.0
 
     return x, U, A, B
 
@@ -217,13 +243,10 @@ x, U, A, B = resolver_fem_1d(
 np.set_printoptions(precision=10, suppress=True)
 
 print("Matriz A:\n")
-
 print(np.round(A, 10))
 
 print("\nVector B:\n")
-
 print(np.round(B, 10))
 
-print("\nVector solución (u):\n")
-
+print("\nVector solución U:\n")
 print(np.round(U, 10))

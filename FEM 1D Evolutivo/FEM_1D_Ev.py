@@ -28,24 +28,12 @@ def u_inicial(x):
     return 0.0
 
 
-# Condiciones de Dirichlet.
-# Puedes usar valores constantes o funciones lambda x, t.
 dirichlet_conditions = {
     "left": 0.0,
     "right": 1.0
 }
 
-# Condiciones de Neumann.
-# Si no hay Neumann, dejar vacío.
-#
-# Convenio usado:
-#   "left":  valor de u_x en x=0
-#   "right": valor de u_x en x=L
-#
-# Para el problema actual no hay Neumann.
-neumann_conditions = {
-    # "right": 1.0
-}
+neumann_conditions = {}
 
 
 # ============================================================
@@ -59,18 +47,18 @@ def crear_malla(L, Nelements):
 
 
 # ============================================================
-# CUADRATURA Y FUNCIONES DE FORMA
+# CUADRATURA Y FUNCIONES DE FORMA EN [0, 1]
 # ============================================================
 
 def cuadratura_gauss_2p():
     xi = np.array([
-        -1.0 / np.sqrt(3.0),
-         1.0 / np.sqrt(3.0)
+        (1.0 - 1.0 / np.sqrt(3.0)) / 2.0,
+        (1.0 + 1.0 / np.sqrt(3.0)) / 2.0
     ])
 
     w = np.array([
-        1.0,
-        1.0
+        0.5,
+        0.5
     ])
 
     return xi, w
@@ -78,13 +66,13 @@ def cuadratura_gauss_2p():
 
 def funciones_forma_lineales(xi):
     N = np.array([
-        (1.0 - xi) / 2.0,
-        (1.0 + xi) / 2.0
+        1.0 - xi,
+        xi
     ])
 
     dN_dxi = np.array([
-        -0.5,
-         0.5
+        -1.0,
+         1.0
     ])
 
     return N, dN_dxi
@@ -105,14 +93,6 @@ def nodo_lado(lado, Nnodes):
 
 
 def evaluar_valor(valor, x, t):
-    """
-    Permite usar condiciones constantes o funciones.
-
-    Ejemplos:
-        "left": 0.0
-        "right": lambda x, t: np.sin(t)
-    """
-
     if callable(valor):
         return valor(x, t)
 
@@ -120,16 +100,16 @@ def evaluar_valor(valor, x, t):
 
 
 def aplicar_dirichlet_a_vector(U, x, dirichlet_conditions, t):
-    """
-    Impone los valores de Dirichlet directamente sobre un vector U.
-    Se usa para asegurar que la condición inicial ya cumple el contorno.
-    """
-
     Nnodes = len(x)
 
     for lado, valor in dirichlet_conditions.items():
         nodo = nodo_lado(lado, Nnodes)
-        U[nodo] = evaluar_valor(valor, x[nodo], t)
+
+        U[nodo] = evaluar_valor(
+            valor,
+            x[nodo],
+            t
+        )
 
     return U
 
@@ -139,47 +119,39 @@ def aplicar_dirichlet_a_vector(U, x, dirichlet_conditions, t):
 # ============================================================
 
 def matrices_locales_1d(x1, x2):
-    """
-    Calcula la matriz de rigidez local Ke y la matriz de masa local Me
-    de un elemento lineal 1D.
-    """
-
     h = x2 - x1
-    J = h / 2.0
+    J = h
 
-    Ke = np.zeros((2, 2))
+    Ke = (1.0 / h) * np.array([
+        [ 1.0, -1.0],
+        [-1.0,  1.0]
+    ])
+
     Me = np.zeros((2, 2))
 
     xi_gauss, pesos = cuadratura_gauss_2p()
 
     for xi, w in zip(xi_gauss, pesos):
 
-        N, dN_dxi = funciones_forma_lineales(xi)
-
-        dN_dx = dN_dxi / J
+        N, _ = funciones_forma_lineales(xi)
 
         for a in range(2):
 
             for b in range(2):
 
-                # Matriz de rigidez: ∫ N'_a N'_b dx
-                Ke[a, b] += w * dN_dx[a] * dN_dx[b] * J
-
-                # Matriz de masa: ∫ N_a N_b dx
-                Me[a, b] += w * N[a] * N[b] * J
+                Me[a, b] += (
+                    w
+                    * N[a]
+                    * N[b]
+                    * J
+                )
 
     return Ke, Me
 
 
 def vector_cargas_local_1d(x1, x2, f, t):
-    """
-    Calcula el vector local de cargas:
-
-        Fe_a = ∫ f(x,t) N_a dx
-    """
-
     h = x2 - x1
-    J = h / 2.0
+    J = h
 
     Fe = np.zeros(2)
 
@@ -189,10 +161,14 @@ def vector_cargas_local_1d(x1, x2, f, t):
 
         N, _ = funciones_forma_lineales(xi)
 
-        x_phys = (x1 + x2) / 2.0 + J * xi
+        # Transformación:
+        x_phys = x1 + h * xi
 
         for a in range(2):
-            Fe[a] += w * f(x_phys, t) * N[a] * J
+
+            Fe[a] += (
+                w * f(x_phys, t) * N[a] * J
+            )
 
     return Fe
 
@@ -202,11 +178,6 @@ def vector_cargas_local_1d(x1, x2, f, t):
 # ============================================================
 
 def ensamblar_matrices(x):
-    """
-    Ensambla las matrices globales K y M.
-    Estas matrices no dependen del tiempo si la malla y alpha son constantes.
-    """
-
     Nnodes = len(x)
     Nelements = Nnodes - 1
 
@@ -237,11 +208,6 @@ def ensamblar_matrices(x):
 
 
 def ensamblar_vector_cargas(x, f, t):
-    """
-    Ensambla el vector global F(t).
-    Si f no depende del tiempo, este vector será siempre el mismo.
-    """
-
     Nnodes = len(x)
     Nelements = Nnodes - 1
 
@@ -257,7 +223,9 @@ def ensamblar_vector_cargas(x, f, t):
         nodos = [e, e + 1]
 
         for a in range(2):
+
             I = nodos[a]
+
             F[I] += Fe[a]
 
     return F
@@ -268,28 +236,17 @@ def ensamblar_vector_cargas(x, f, t):
 # ============================================================
 
 def aplicar_neumann_rhs(b, x, neumann_conditions, alpha, dt, t):
-    """
-    Aplica Neumann sobre el segundo miembro del esquema temporal.
-
-    Para el problema:
-
-        u_t - alpha u_xx = f
-
-    usando el convenio:
-        left  -> valor de u_x en x = 0
-        right -> valor de u_x en x = L
-
-    La contribución es:
-        izquierda: -dt * alpha * g
-        derecha:  +dt * alpha * g
-    """
-
     Nnodes = len(x)
 
     for lado, valor in neumann_conditions.items():
 
         nodo = nodo_lado(lado, Nnodes)
-        g = evaluar_valor(valor, x[nodo], t)
+
+        g = evaluar_valor(
+            valor,
+            x[nodo],
+            t
+        )
 
         if lado == "left":
             b[nodo] -= dt * alpha * g
@@ -301,15 +258,6 @@ def aplicar_neumann_rhs(b, x, neumann_conditions, alpha, dt, t):
 
 
 def aplicar_dirichlet_sistema(A, b, x, dirichlet_conditions, t):
-    """
-    Aplica condiciones de Dirichlet de forma simétrica.
-
-    Primero corrige el segundo miembro:
-        b = b - A[:, nodo] * valor
-
-    Luego anula fila y columna.
-    """
-
     Nnodes = len(x)
 
     dirichlet_nodes = {}
@@ -317,11 +265,15 @@ def aplicar_dirichlet_sistema(A, b, x, dirichlet_conditions, t):
     for lado, valor in dirichlet_conditions.items():
 
         nodo = nodo_lado(lado, Nnodes)
-        valor_nodo = evaluar_valor(valor, x[nodo], t)
+
+        valor_nodo = evaluar_valor(
+            valor,
+            x[nodo],
+            t
+        )
 
         dirichlet_nodes[nodo] = valor_nodo
 
-    # Corregir B antes de anular columnas
     for nodo, valor in dirichlet_nodes.items():
         b -= A[:, nodo] * valor
 
@@ -352,27 +304,18 @@ def resolver_fem_1d_evolutivo(
     dirichlet_conditions,
     neumann_conditions
 ):
-    """
-    Resuelve:
-
-        u_t - alpha u_xx = f(x,t)
-
-    con elementos finitos P1 en espacio y Euler implícito en tiempo.
-    """
-
     x = crear_malla(L, Nelements)
 
-    Nnodes = len(x)
     Nt = int(Tfinal / dt)
 
     K, M = ensamblar_matrices(x)
 
     # Condición inicial
-    U = np.array([
-        u_inicial(xi) for xi in x
-    ], dtype=float)
+    U = np.array(
+        [u_inicial(xi) for xi in x],
+        dtype=float
+    )
 
-    # Aseguramos que la condición inicial cumple Dirichlet
     U = aplicar_dirichlet_a_vector(
         U,
         x,
@@ -383,11 +326,9 @@ def resolver_fem_1d_evolutivo(
     U_history = [U.copy()]
     time_history = [0.0]
 
-    # Matriz constante del método de Euler implícito
     A_base = M + dt * alpha * K
 
     for n in range(Nt):
-
         t_next = (n + 1) * dt
 
         F = ensamblar_vector_cargas(
@@ -581,10 +522,10 @@ x, time_array, U_array, K, M = resolver_fem_1d_evolutivo(
     neumann_conditions=neumann_conditions
 )
 
-print(f"Valor del vector solución en t={Tfinal:.2f}:")
-print(U_array[-1])
+np.set_printoptions(precision=10, suppress=True)
 
-print(f"\nTamaño de U_array: {U_array.shape}")
+print(f"Valor del vector solución en t= {Tfinal:.2f}:")
+print(U_array[-1])
 
 if guardar_txt:
     guardar_soluciones_txt(

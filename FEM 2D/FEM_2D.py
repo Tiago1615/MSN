@@ -20,18 +20,13 @@ def f(x, y):
 def g(x, y):
     return 1.0
 
-
-# Grupos físicos con condición de Dirichlet.
-# Puede ser un número constante o una función lambda x, y.
 dirichlet_conditions = {
     5: 0.0,
     6: 1.0
 }
 
-# Grupos físicos con condición de Neumann.
 neumann_conditions = {}
 
-# Prioridad en esquinas o nodos compartidos.
 priority_groups = [6, 5]
 
 
@@ -72,8 +67,8 @@ def cuadratura_triangulo_3p():
 
 def cuadratura_linea_2p():
     puntos = np.array([
-        0.5 - 1.0 / (2.0 * np.sqrt(3.0)),
-        0.5 + 1.0 / (2.0 * np.sqrt(3.0))
+        (1.0 - 1.0 / np.sqrt(3.0)) / 2.0,
+        (1.0 + 1.0 / np.sqrt(3.0)) / 2.0
     ])
 
     pesos = np.array([
@@ -116,14 +111,6 @@ def funciones_forma_linea(xi):
 # ============================================================
 
 def evaluar_valor(valor, x, y):
-    """
-    Permite usar condiciones constantes o funciones.
-
-    Ejemplos:
-        5: 0.0
-        6: lambda x, y: x + y
-    """
-
     if callable(valor):
         return valor(x, y)
 
@@ -154,16 +141,26 @@ def mapear_a_fisico(coords, xi, eta):
     return x, y
 
 
+def gradientes_fisicos(coords):
+    J = matriz_jacobiana(coords)
+
+    invJT = np.linalg.inv(J).T
+
+    grad_ref = gradientes_referencia()
+
+    grad_phys = np.zeros((3, 2))
+
+    for a in range(3):
+        grad_phys[a, :] = invJT @ grad_ref[a, :]
+
+    return grad_phys
+
+
 # ============================================================
 # MATRICES LOCALES
 # ============================================================
 
 def calcular_elemento_triangular(coords, c, f):
-    """
-    Calcula la matriz local Ae y el vector local Be
-    para un triángulo P1.
-    """
-
     J = matriz_jacobiana(coords)
 
     detJ = np.linalg.det(J)
@@ -172,16 +169,20 @@ def calcular_elemento_triangular(coords, c, f):
         raise ValueError("Elemento degenerado con detJ cercano a cero.")
 
     area_factor = abs(detJ)
+    area_K = 0.5 * abs(detJ)
 
-    invJ = np.linalg.inv(J)
+    grad_phys = gradientes_fisicos(coords)
 
-    grad_ref = gradientes_referencia()
+    Ke = np.zeros((3, 3))
 
-    # Gradientes físicos.
-    # Los gradientes están escritos como filas.
-    grad_phys = grad_ref @ invJ
+    for a in range(3):
+        for b in range(3):
+            Ke[a, b] = (
+                np.dot(grad_phys[a], grad_phys[b])
+                * area_K
+            )
 
-    Ae = np.zeros((3, 3))
+    Me = np.zeros((3, 3))
     Be = np.zeros(3)
 
     puntos, pesos = cuadratura_triangulo_3p()
@@ -196,26 +197,13 @@ def calcular_elemento_triangular(coords, c, f):
 
             for b in range(3):
 
-                # Término de rigidez:
-                # ∫ grad(Na) · grad(Nb) dΩ
-                Ae[a, b] += (
+                Me[a, b] += (
                     w
-                    * np.dot(grad_phys[a], grad_phys[b])
-                    * area_factor
-                )
-
-                # Término de reacción:
-                # ∫ c Na Nb dΩ
-                Ae[a, b] += (
-                    w
-                    * c
                     * N[a]
                     * N[b]
                     * area_factor
                 )
 
-            # Segundo miembro:
-            # ∫ f Na dΩ
             Be[a] += (
                 w
                 * f(x_phys, y_phys)
@@ -223,6 +211,7 @@ def calcular_elemento_triangular(coords, c, f):
                 * area_factor
             )
 
+    Ae = Ke + c * Me
     return Ae, Be
 
 
@@ -266,15 +255,6 @@ def detectar_nodos_dirichlet(
     dirichlet_conditions,
     priority_groups
 ):
-    """
-    Devuelve un diccionario:
-
-        nodo -> valor_dirichlet
-
-    Si un nodo pertenece a varios grupos Dirichlet,
-    se usa la prioridad indicada en priority_groups.
-    """
-
     priority_map = {
         group: i for i, group in enumerate(priority_groups)
     }
@@ -313,7 +293,6 @@ def detectar_nodos_dirichlet(
             else:
                 dirichlet_nodes[node] = (value, priority)
 
-    # Nos quedamos solo con nodo -> valor
     resultado = {
         node: value_priority[0]
         for node, value_priority in dirichlet_nodes.items()
@@ -323,18 +302,9 @@ def detectar_nodos_dirichlet(
 
 
 def aplicar_dirichlet(A, B, dirichlet_nodes):
-    """
-    Aplica Dirichlet de forma simétrica.
-
-    Importante:
-    primero se corrige B y luego se anulan filas y columnas.
-    """
-
-    # Corregir segundo miembro
     for node, value in dirichlet_nodes.items():
         B -= A[:, node] * value
 
-    # Imponer Dirichlet
     for node, value in dirichlet_nodes.items():
 
         A[node, :] = 0.0
@@ -358,13 +328,6 @@ def aplicar_neumann(
     neumann_conditions,
     dirichlet_nodes
 ):
-    """
-    Aplica condiciones de Neumann sobre grupos físicos.
-
-    Si un nodo ya tiene Dirichlet, se omite la contribución
-    en ese nodo para que Dirichlet tenga prioridad.
-    """
-
     dirichlet_set = set(dirichlet_nodes.keys())
 
     puntos, pesos = cuadratura_linea_2p()
@@ -422,8 +385,8 @@ def resolver_fem_2d(
 ):
     nodes, elements, lines, line_phys = leer_malla(mesh_file)
 
-    print("Nodos:", len(nodes))
-    print("Triángulos:", len(elements))
+    print("Número de Nodos:", len(nodes))
+    print("Número de Triángulos:", len(elements))
 
     A, B = ensamblar_sistema(
         nodes,
