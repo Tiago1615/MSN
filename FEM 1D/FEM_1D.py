@@ -21,6 +21,11 @@ neumann_conditions = {
 def f(x):
     return 2.0 * x
 
+# def u_real(x):
+#     return ...
+
+u_real = None
+
 
 # ============================================================
 # MALLA
@@ -71,7 +76,7 @@ def funciones_forma_lineales(xi):
 def calcular_matriz_local(x1, x2, c, f):
     h = x2 - x1
     J = h
-    
+
     Ke = (1.0 / h) * np.array([
         [ 1.0, -1.0],
         [-1.0,  1.0]
@@ -228,6 +233,25 @@ def resolver_fem_1d(
 
 
 # ============================================================
+# CÁLCULO DEL ERROR
+# ============================================================
+
+def calcular_error(x, U, u_exacta):
+    if u_exacta is None:
+        return None
+
+    U_exacta = np.array([
+        u_exacta(xi) for xi in x
+    ])
+
+    error = U_exacta - U
+
+    error_max = np.max(np.abs(error))
+
+    return U_exacta, error, error_max
+
+
+# ============================================================
 # EJECUCIÓN
 # ============================================================
 
@@ -240,13 +264,29 @@ x, U, A, B = resolver_fem_1d(
     neumann_conditions=neumann_conditions
 )
 
+resultado_error = calcular_error(x, U, u_real)
+
 np.set_printoptions(precision=10, suppress=True)
 
-print("Matriz A:\n")
+print("\nMatriz A:")
 print(np.round(A, 10))
+print(f"Tamaño de A: {A.shape}\n")
 
-print("\nVector B:\n")
+print("\nVector B:")
 print(np.round(B, 10))
+print(f"Tamaño de B: {B.shape}\n")
 
-print("\nVector solución U:\n")
+print("\nVector solución U:")
 print(np.round(U, 10))
+print(f"Tamaño de U: {U.shape}\n")
+
+if resultado_error is not None:
+    _, error, error_max = resultado_error
+
+    print("\nError U_exacta - U_FEM:")
+    print(np.round(error, 10))
+
+    print("\nError máximo:")
+    print(error_max)
+else:
+    print("\nNo se ha definido una solución exacta, por lo que no se puede calcular el error.")

@@ -35,6 +35,11 @@ dirichlet_conditions = {
 
 neumann_conditions = {}
 
+u_exacta = None
+
+# def u_exacta(x, t):
+#     ...
+
 
 # ============================================================
 # MALLA
@@ -507,6 +512,33 @@ def guardar_animacion(x, time_array, U_array, archivo="animacion.gif"):
 
 
 # ============================================================
+# CÁLCULO DEL ERROR
+# ============================================================
+
+def calcular_error(x, time_array, U_array, u_exacta):
+    if u_exacta is None:
+        return None
+
+    errores_max = []
+
+    for n, t in enumerate(time_array):
+
+        U = U_array[n]
+
+        U_exacta = np.array([
+            u_exacta(xi, t) for xi in x
+        ])
+
+        error = U_exacta - U
+
+        errores_max.append(
+            np.max(np.abs(error))
+        )
+
+    return U_exacta, np.array(error), np.array(errores_max)
+
+
+# ============================================================
 # EJECUCIÓN
 # ============================================================
 
@@ -522,10 +554,37 @@ x, time_array, U_array, K, M = resolver_fem_1d_evolutivo(
     neumann_conditions=neumann_conditions
 )
 
+resultado_error = calcular_error(
+    x,
+    time_array,
+    U_array,
+    u_exacta
+)
+
 np.set_printoptions(precision=10, suppress=True)
 
-print(f"Valor del vector solución en t= {Tfinal:.2f}:")
+print("\nMatriz K:")
+print(np.round(K, 10))
+print(f"Tamaño de K: {K.shape}\n")
+
+print("\nMatriz M:")
+print(np.round(M, 10))
+print(f"Tamaño de M: {M.shape}\n")
+
+print(f"\nValor del vector solución en t= {Tfinal:.2f}:")
 print(U_array[-1])
+print(f"Tamaño de U_array: {U_array.shape}\n")
+
+if resultado_error is not None:
+    _, error, errores_max = resultado_error
+
+    print("\nError U_exacta - U_FEM en el tiempo final:")
+    print(np.round(error, 10))
+
+    print("\nError máximo en cada tiempo:")
+    print(errores_max)
+else:
+    print("\nNo se ha definido una función de solución exacta, por lo que no se calcula el error.\n")
 
 if guardar_txt:
     guardar_soluciones_txt(

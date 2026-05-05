@@ -8,26 +8,32 @@ import matplotlib.tri as tri
 # CONFIGURACIÓN DEL PROBLEMA
 # ============================================================
 
-mesh_file = "C:/Users/santu/Desktop/Documentos ULPGC/Master/Asignaturas/Segundo Semestre/MSN/MSN/FEM 2D/pararayos.msh"
+mesh_file = "C:/Users/santu/Desktop/Documentos ULPGC/Master/Asignaturas/Segundo Semestre/MSN/MSN/FEM 2D/cuadrado.msh"
 
-c = 1.0
+c = 0.0
 
 
 def f(x, y):
-    return 1.0
+    return -80 * np.exp(-5 * (1 - 2 * x + 2*x**2 -2*y + 2*y**2)) * (2-5*x+5*x**2-5*y+5*y**2)
 
 
 def g(x, y):
-    return 1.0
+    return -20 * (y-0.5) * np.exp(-10 * ((x-0.5)**2 + (y-0.5)**2))
 
 dirichlet_conditions = {
-    5: 0.0,
-    6: 1.0
+    5: lambda x, y: np.exp(-10 * (x - 0.5)**2 - 10 * (y - 0.5)**2),
 }
 
-neumann_conditions = {}
+neumann_conditions = {
+    6: g
+}
 
-priority_groups = [6, 5]
+priority_groups = [5]
+
+# u_exacta = None
+
+def u_exacta(x, y):
+    return np.exp(-10 * (x-0.5)**2 - 10 * (y-0.5)**2)
 
 
 # ============================================================
@@ -482,6 +488,25 @@ def visualizar_resultado(nodes, elements, U):
 
 
 # ============================================================
+# CÁLCULO DEL ERROR
+# ============================================================
+
+def calcular_error(nodes, U, u_exacta):
+    if u_exacta is None:
+        return None
+
+    U_exacta = np.array([
+        u_exacta(x, y) for x, y in nodes
+    ])
+
+    error = U_exacta - U
+
+    error_max = np.max(np.abs(error))
+
+    return U_exacta, error, error_max
+
+
+# ============================================================
 # EJECUCIÓN
 # ============================================================
 
@@ -494,15 +519,32 @@ nodes, elements, A, B, U = resolver_fem_2d(
     priority_groups=priority_groups
 )
 
+resultado_error = calcular_error(
+    nodes,
+    U,
+    u_exacta
+)
+
 np.set_printoptions(precision=10, suppress=True)
 
 print(f"\nMatriz A:\n{A}")
 print(f"Tamaño de A: {A.shape}\n")
 
-print(f"Vector B:\n{B}")
+print(f"\nVector B:\n{B}")
 print(f"Tamaño de B: {B.shape}\n")
 
-print(f"Solución U:\n{U}")
+print(f"\nSolución U:\n{U}")
 print(f"Tamaño de U: {U.shape}")
+
+if resultado_error is not None:
+    _, error, error_max = resultado_error
+
+    print("\nError U_exacta - U_FEM:")
+    print(error)
+
+    print("\nError máximo:")
+    print(error_max)
+else:
+    print("\nNo se ha definido una función de solución exacta, por lo que no se calcula el error.\n")
 
 visualizar_resultado(nodes, elements, U)
